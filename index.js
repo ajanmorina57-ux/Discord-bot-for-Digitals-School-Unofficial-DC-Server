@@ -10,6 +10,13 @@ import {
   EmbedBuilder
 } from "discord.js";
 
+import http from "http";
+
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end("Digital School Bot is running");
+}).listen(process.env.PORT || 3000);
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
