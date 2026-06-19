@@ -23,6 +23,58 @@ const client = new Client({
   ]
 });
 
+const xp = new Map();
+const submissions = [new SlashCommandBuilder()
+  .setName("rank")
+  .setDescription("Show your XP rank"),
+
+new SlashCommandBuilder()
+  .setName("leaderboard")
+  .setDescription("Show XP leaderboard"),
+
+new SlashCommandBuilder()
+  .setName("submit")
+  .setDescription("Submit homework")
+  .addStringOption(o =>
+    o.setName("homework").setDescription("Homework name").setRequired(true)
+  )
+  .addStringOption(o =>
+    o.setName("link").setDescription("GitHub/file link").setRequired(true)
+  ),
+
+new SlashCommandBuilder()
+  .setName("verify")
+  .setDescription("Verify yourself as student"),
+
+new SlashCommandBuilder()
+  .setName("python")
+  .setDescription("Ask Python AI")
+  .addStringOption(o =>
+    o.setName("question").setDescription("Question").setRequired(true)
+  ),
+
+new SlashCommandBuilder()
+  .setName("html")
+  .setDescription("Ask HTML AI")
+  .addStringOption(o =>
+    o.setName("question").setDescription("Question").setRequired(true)
+  ),
+
+new SlashCommandBuilder()
+  .setName("css")
+  .setDescription("Ask CSS AI")
+  .addStringOption(o =>
+    o.setName("question").setDescription("Question").setRequired(true)
+  ),
+
+new SlashCommandBuilder()
+  .setName("javascript")
+  .setDescription("Ask JavaScript AI")
+  .addStringOption(o =>
+    o.setName("question").setDescription("Question").setRequired(true)
+  ),];
+
+
 const commands = [
   new SlashCommandBuilder().setName("help").setDescription("Show all commands"),
 
@@ -276,8 +328,9 @@ client.on("interactionCreate", async interaction => {
         ephemeral: true,
         content:
           "**Digital School Bot Commands**\n\n" +
-          "**AI:** `/ask`, `/code-review`, `/roadmap`, `/challenge`, `/quiz`\n" +
-          "**School:** `/resources`, `/classinfo`, `/homework`, `/announce`\n" +
+          "**AI:** `/ask`, `/python`, `/html`, `/css`, `/javascript`, `/code-review`, `/roadmap`, `/challenge`, `/quiz`\n" +
+          "**School:** `/resources`, `/classinfo`, `/homework`, `/announce`, `/submit`\n" +
+          "**Student:** `/rank`, `/leaderboard`, `/verify`\n" +
           "**Support:** `/ticket`, `/close`, `/report`, `/suggest`\n" +
           "**Moderation:** `/warn`, `/kick`, `/ban`, `/timeout`, `/clear`, `/lock`, `/unlock`, `/slowmode`, `/poll`"
       });
@@ -290,6 +343,99 @@ client.on("interactionCreate", async interaction => {
       return interaction.editReply(answer.slice(0, 1900));
     }
 
+    if (["python", "html", "css", "javascript"].includes(cmd)) {
+      await interaction.deferReply();
+      const q = interaction.options.getString("question");
+      const answer = await askAI(`Explain this ${cmd} question: ${q}`);
+      return interaction.editReply(answer.slice(0, 1900));
+    }
+
+    if (cmd === "rank") {
+      const userXp = xp.get(interaction.user.id) || 0;
+      return interaction.reply(`${interaction.user} has **${userXp} XP**.`);
+    }
+
+    if (cmd === "leaderboard") {
+      const top = [...xp.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+      if (top.length === 0) return interaction.reply("No XP yet.");
+
+      const text = top
+        .map((x, i) => `${i + 1}. <@${x[0]}> — ${x[1]} XP`)
+        .join("\n");
+
+      return interaction.reply(`🏆 **Leaderboard**\n${text}`);
+    }
+
+    if (cmd === "submit") {
+      const homework = interaction.options.getString("homework");
+      const link = interaction.options.getString("link");
+
+      submissions.push({
+        user: interaction.user.tag,
+        homework,
+        link
+      });
+
+      xp.set(interaction.user.id, (xp.get(interaction.user.id) || 0) + 25);
+
+      return interaction.reply(
+        `✅ Homework submitted!\n**Homework:** ${homework}\n**Link:** ${link}\n+25 XP`
+      );
+    }
+
+    if (cmd === "verify") {
+      const role = interaction.guild.roles.cache.find(r => r.name === "Student");
+
+      if (!role) {
+        return interaction.reply({
+          content: "Create a role named `Student` first.",
+          ephemeral: true
+        });
+      }
+
+      await interaction.member.roles.add(role);
+
+      return interaction.reply({
+        content: "✅ You are now verified as Student.",
+        ephemeral: true
+      });
+    }
+
+    if (cmd === "resources") {
+      return interaction.reply(
+        "**Programming Resources**\n" +
+        "HTML: https://developer.mozilla.org/en-US/docs/Web/HTML\n" +
+        "CSS: https://developer.mozilla.org/en-US/docs/Web/CSS\n" +
+        "JavaScript: https://developer.mozilla.org/en-US/docs/Web/JavaScript\n" +
+        "Python: https://docs.python.org/3/\n" +
+        "GitHub: https://github.com\n" +
+        "Linux: https://linuxjourney.com/"
+      );
+    }
+
+    if (cmd === "ticket") {
+      const channel = await interaction.guild.channels.create({
+        name: `help-${interaction.user.username}`,
+        type: ChannelType.GuildText,
+        permissionOverwrites: [
+          { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+          {
+            id: interaction.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages
+            ]
+          }
+        ]
+      });
+
+      await channel.send(`Hello ${interaction.user}, explain your problem here.`);
+      return interaction.reply({ content: `Ticket created: ${channel}`, ephemeral: true });
+    }
+
     return interaction.reply({
       content: "Command not implemented yet.",
       ephemeral: true
@@ -298,7 +444,7 @@ client.on("interactionCreate", async interaction => {
   } catch (err) {
     console.error(err);
 
-    if (interaction.deferred) {
+    if (interaction.deferred || interaction.replied) {
       return interaction.editReply("Something went wrong.");
     }
 
@@ -310,3 +456,4 @@ client.on("interactionCreate", async interaction => {
 });
 
 client.login(process.env.TOKEN);
+
