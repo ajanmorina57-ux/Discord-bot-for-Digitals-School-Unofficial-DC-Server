@@ -150,22 +150,29 @@ const commands = [
 ].map(c => c.toJSON());
 
 async function askAI(prompt) {
-  const res = await ai.chat.completions.create({
-    model: "llama-3.1-8b-instant",
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are Digital School AI. Help students with programming, HTML, CSS, JavaScript, Python, Linux, GitHub, AI, homework, and projects. Keep answers clear and useful."
-      },
-      { role: "user", content: prompt }
-    ]
-  });
+  try {
+    const res = await ai.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are Digital School AI. Help students with HTML, CSS, JavaScript, Python, Linux, GitHub, AI, homework, and projects. Keep answers short and clear."
+        },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 500,
+      temperature: 0.7
+    });
 
-  return res.choices[0]?.message?.content || "No AI response.";
+    return res.choices?.[0]?.message?.content || "No AI response.";
+  } catch (err) {
+    console.error("AI ERROR:", err);
+    return "AI is currently unavailable. Please try again in a few seconds.";
+  }
 }
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
@@ -308,6 +315,7 @@ client.on("interactionCreate", async interaction => {
 
     if (cmd === "clear") {
       const amount = interaction.options.getInteger("amount");
+
       if (amount < 1 || amount > 100) {
         return interaction.reply({ content: "Choose 1-100.", ephemeral: true });
       }
@@ -408,11 +416,10 @@ client.on("interactionCreate", async interaction => {
         ephemeral: true
       });
     }
-
   } catch (err) {
     console.error(err);
 
-    if (interaction.deferred) {
+    if (interaction.deferred || interaction.replied) {
       return interaction.editReply("Something went wrong.");
     }
 
