@@ -451,84 +451,78 @@ client.on("guildMemberAdd", async member => {
 });
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
+
   try {
-    try {
+    if (interaction.isButton()) {
+      const match = matches.get(interaction.message.id);
 
-      if (interaction.isButton()) {
-        const match = matches.get(interaction.message.id);
+      if (!match) {
+        return interaction.reply({
+          content: "This match no longer exists.",
+          ephemeral: true
+        });
+      }
 
-        if (!match) {
+      if (interaction.customId === "match_join") {
+        if (match.players.includes(interaction.user.id)) {
           return interaction.reply({
-            content: "This match no longer exists.",
+            content: "You already joined.",
             ephemeral: true
           });
         }
 
-        if (interaction.customId === "match_join") {
-          if (match.players.includes(interaction.user.id)) {
-            return interaction.reply({
-              content: "You already joined.",
-              ephemeral: true
-            });
-          }
-
-          if (match.players.length >= match.maxPlayers) {
-            return interaction.reply({
-              content: "Match is already full.",
-              ephemeral: true
-            });
-          }
-
-          match.players.push(interaction.user.id);
-        }
-
-        if (interaction.customId === "match_leave") {
-          match.players = match.players.filter(
-            id => id !== interaction.user.id
-          );
-        }
-
-        if (interaction.customId === "match_cancel") {
-          if (interaction.user.id !== match.creator) {
-            return interaction.reply({
-              content: "Only the creator can cancel this match.",
-              ephemeral: true
-            });
-          }
-
-          matches.delete(interaction.message.id);
-
-          return interaction.update({
-            content: "❌ Match cancelled.",
-            embeds: [],
-            components: []
+        if (match.players.length >= match.maxPlayers) {
+          return interaction.reply({
+            content: "Match is already full.",
+            ephemeral: true
           });
         }
 
-        const half = match.maxPlayers / 2;
-        const teamA = match.players.slice(0, half);
-        const teamB = match.players.slice(half);
+        match.players.push(interaction.user.id);
+      }
 
-        const embed = new EmbedBuilder()
-        .setTitle(
-          match.players.length >= match.maxPlayers
-          ? "✅ Match Ready"
-          : "🎮 Matchmaking"
-        )
-        .setDescription(
-          `**Game:** ${match.game}\n` +
-          `**Mode:** ${match.mode}\n` +
-          `**Players:** ${match.players.length}/${match.maxPlayers}\n\n` +
-          `**Team A**\n${teamA.map(id => `👤 <@${id}>`).join("\n") || "Waiting..."}\n\n` +
-          `**Team B**\n${teamB.map(id => `👤 <@${id}>`).join("\n") || "Waiting..."}`
-        );
+      if (interaction.customId === "match_leave") {
+        match.players = match.players.filter(id => id !== interaction.user.id);
+      }
+
+      if (interaction.customId === "match_cancel") {
+        if (interaction.user.id !== match.creator) {
+          return interaction.reply({
+            content: "Only the creator can cancel this match.",
+            ephemeral: true
+          });
+        }
+
+        matches.delete(interaction.message.id);
 
         return interaction.update({
-          embeds: [embed]
+          content: "❌ Match cancelled.",
+          embeds: [],
+          components: []
         });
       }
 
-      const cmd = interaction.commandName;
+      const half = match.maxPlayers / 2;
+      const teamA = match.players.slice(0, half);
+      const teamB = match.players.slice(half);
+      const isFull = match.players.length >= match.maxPlayers;
+
+      const embed = new EmbedBuilder()
+      .setTitle(isFull ? "✅ Match Ready" : "🎮 Matchmaking")
+      .setDescription(
+        `**Game:** ${match.game}\n` +
+        `**Mode:** ${match.mode}\n` +
+        `**Players:** ${match.players.length}/${match.maxPlayers}\n\n` +
+        `**Team A**\n${teamA.map(id => `👤 <@${id}>`).join("\n") || "Waiting..."}\n\n` +
+        `**Team B**\n${teamB.map(id => `👤 <@${id}>`).join("\n") || "Waiting..."}`
+      );
+
+      return interaction.update({
+        embeds: [embed]
+      });
+    }
+
+    const cmd = interaction.commandName;
 
     if (cmd === "help") {
       return interaction.reply({
