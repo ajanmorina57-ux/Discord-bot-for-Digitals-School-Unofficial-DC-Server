@@ -9,7 +9,10 @@ import {
   Routes,
   PermissionFlagsBits,
   ChannelType,
-  EmbedBuilder
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
 } from "discord.js";
 
 http.createServer((req, res) => {
@@ -28,6 +31,17 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
+
+const matches = new Map();
+
+function getMaxPlayers(mode) {
+  return {
+    "1v1": 2,
+    "2v2": 4,
+    "3v3": 6,
+    "5v5": 10
+  }[mode];
+}
 
 async function getXP(userId) {
   const { data, error } = await supabase
@@ -74,8 +88,28 @@ async function saveSubmission(userTag, homework, link) {
   }
 }
 
+
+
 const commands = [
     new SlashCommandBuilder().setName("help").setDescription("Show all commands"),
+
+    new SlashCommandBuilder()
+    .setName("match-create")
+    .setDescription("Create a gaming matchmaking lobby")
+    .addStringOption(o =>
+    o.setName("game").setDescription("Game name").setRequired(true)
+    )
+    .addStringOption(o =>
+    o.setName("mode")
+    .setDescription("Match mode")
+    .setRequired(true)
+    .addChoices(
+      { name: "1v1", value: "1v1" },
+      { name: "2v2", value: "2v2" },
+      { name: "3v3", value: "3v3" },
+      { name: "5v5", value: "5v5" }
+    )
+    ),
 
   new SlashCommandBuilder()
     .setName("ask")
@@ -416,10 +450,85 @@ client.on("guildMemberAdd", async member => {
   }
 });
 client.on("interactionCreate", async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
+  if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
   try {
-    const cmd = interaction.commandName;
+    try {
+
+      if (interaction.isButton()) {
+        const match = matches.get(interaction.message.id);
+
+        if (!match) {
+          return interaction.reply({
+            content: "This match no longer exists.",
+            ephemeral: true
+          });
+        }
+
+        if (interaction.customId === "match_join") {
+          if (match.players.includes(interaction.user.id)) {
+            return interaction.reply({
+              content: "You already joined.",
+              ephemeral: true
+            });
+          }
+
+          if (match.players.length >= match.maxPlayers) {
+            return interaction.reply({
+              content: "Match is already full.",
+              ephemeral: true
+            });
+          }
+
+          match.players.push(interaction.user.id);
+        }
+
+        if (interaction.customId === "match_leave") {
+          match.players = match.players.filter(
+            id => id !== interaction.user.id
+          );
+        }
+
+        if (interaction.customId === "match_cancel") {
+          if (interaction.user.id !== match.creator) {
+            return interaction.reply({
+              content: "Only the creator can cancel this match.",
+              ephemeral: true
+            });
+          }
+
+          matches.delete(interaction.message.id);
+
+          return interaction.update({
+            content: "❌ Match cancelled.",
+            embeds: [],
+            components: []
+          });
+        }
+
+        const half = match.maxPlayers / 2;
+        const teamA = match.players.slice(0, half);
+        const teamB = match.players.slice(half);
+
+        const embed = new EmbedBuilder()
+        .setTitle(
+          match.players.length >= match.maxPlayers
+          ? "✅ Match Ready"
+          : "🎮 Matchmaking"
+        )
+        .setDescription(
+          `**Game:** ${match.game}\n` +
+          `**Mode:** ${match.mode}\n` +
+          `**Players:** ${match.players.length}/${match.maxPlayers}\n\n` +
+          `**Team A**\n${teamA.map(id => `👤 <@${id}>`).join("\n") || "Waiting..."}\n\n` +
+          `**Team B**\n${teamB.map(id => `👤 <@${id}>`).join("\n") || "Waiting..."}`
+        );
+
+        return interaction.update({
+          embeds: [embed]
+        });
+      }
+
+      const cmd = interaction.commandName;
 
     if (cmd === "help") {
       return interaction.reply({
@@ -544,6 +653,52 @@ client.on("interactionCreate", async interaction => {
         "GitHub: https://github.com\n" +
         "Linux: https://linuxjourney.com/"
       );
+    }
+
+    if (cmd === "match-create") {
+      const game = interaction.options.getString("game");
+      const mode = interaction.options.getString("mode");
+      const maxPlayers = getMaxPlayers(mode);
+
+      const embed = new EmbedBuilder()
+      .setTitle("🎮 Matchmaking")
+      .setDescription(
+        `**Game:** ${game}\n` +
+        `**Mode:** ${mode}\n` +
+        `**Players:** 1/${maxPlayers}\n\n` +
+        `👤 ${interaction.user}`
+      );
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+        .setCustomId("match_join")
+        .setLabel("Join")
+        .setStyle(ButtonStyle.Success),
+                                                       new ButtonBuilder()
+                                                       .setCustomId("match_leave")
+                                                       .setLabel("Leave")
+                                                       .setStyle(ButtonStyle.Secondary),
+                                                       new ButtonBuilder()
+                                                       .setCustomId("match_cancel")
+                                                       .setLabel("Cancel")
+                                                       .setStyle(ButtonStyle.Danger)
+      );
+
+      const msg = await interaction.reply({
+        embeds: [embed],
+        components: [row],
+        fetchReply: true
+      });
+
+      matches.set(msg.id, {
+        creator: interaction.user.id,
+        game,
+        mode,
+        maxPlayers,
+        players: [interaction.user.id]
+      });
+
+      return;
     }
 
     if (cmd === "classinfo") {
